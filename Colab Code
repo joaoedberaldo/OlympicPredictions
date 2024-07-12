@@ -1,0 +1,107 @@
+import pandas as pd
+import numpy as np
+import plotly.express as px
+from datetime import datetime
+
+##get data from csv
+  olympicsAthlete = pd.read_csv('https://raw.githubusercontent.com/joaoedberaldo/OlympicPredictions/main/olympic_athletes.csv')
+  olympicsMedals = pd.read_csv('https://raw.githubusercontent.com/joaoedberaldo/OlympicPredictions/main/olympic_medals.csv')
+
+
+## data prep I: data cleaning part one (getting rid of import errors)
+  olympicsMedals.columns
+  olympicsMedals_clean= olympicsMedals.drop(['athlete_url','country_code','country_3_letter_code'], axis=1)
+  olympicsMedals_clean
+  #merging data for getind avg based on Athlete age
+  merged_data = pd.merge(olympicsMedals, olympicsAthlete[['athlete_full_name', 'athlete_year_birth']], on='athlete_full_name', how='left')
+
+  # Convert 'date_of_birth' to integers (assuming it is in year format)
+  merged_data['athlete_year_birth'] = merged_data['athlete_year_birth'].fillna(2000).astype(int)
+
+  # Set the current year
+  current_year_Tokyo = 2021
+
+  # Calculate the age of each athlete
+  merged_data['age'] = current_year_Tokyo - merged_data['athlete_year_birth']
+
+  #create data for paris2024
+  merged_dataParis = merged_data[(merged_data['slug_game'] == "tokyo-2020")].copy()
+  merged_dataParis['age'] += 3
+  merged_dataParis['slug_game'] = "paris-2024"
+  # Filter ages between 24 and 27 inclusive
+  merged_dataParis_filtered = merged_dataParis[(merged_dataParis['age'] >= 24) & (merged_dataParis['age'] <= 27)]
+
+  #checking datasheet
+  #merged_dataParis
+  merged_dataParis_filtered
+
+## data prep II: learning about the dataset
+  #olympicsMedals_clean.info()
+  #spending_clean.describe()
+
+##data modeling
+olympicsMedals_final= olympicsMedals_clean
+olympicsMedals_final= olympicsMedals_final[(olympicsMedals_final['slug_game'] == "tokyo-2020")] #records from tokyo 2020
+olympicsMedals_finalTotal = olympicsMedals_final.drop(['athlete_full_name','slug_game','participant_type','participant_title','discipline_title','event_gender','participant_title'], axis=1).drop_duplicates()
+total_medals_per_country = olympicsMedals_finalTotal.groupby('country_name').size().reset_index(name='total_medals')
+total_medals_per_country['country_name']= total_medals_per_country['country_name'].replace('ROC', 'Russia')
+total_medals_sorted = total_medals_per_country.sort_values(by="total_medals", ascending=False)
+top_7_countries = total_medals_sorted.head(7)
+# Extract the names of the top 7 countries
+top_7_countries_list = top_7_countries['country_name'].tolist()
+
+total_each_medals_per_country = olympicsMedals_finalTotal.groupby(['country_name', 'medal_type']).size().reset_index(name='count')
+total_each_medals_per_country['country_name']= total_each_medals_per_country['country_name'].replace('ROC', 'Russia')
+total_each_medals_sorted = total_each_medals_per_country.sort_values(by="count", ascending=False)
+top_7_countries_each_medal = total_each_medals_per_country[total_each_medals_per_country['country_name'].isin(top_7_countries_list)]
+
+#clean team data
+olympicsMedals_finalTeam = olympicsMedals_final[(olympicsMedals_final['participant_type'] == "GameTeam")]
+olympicsMedals_finalTeam= olympicsMedals_finalTeam.drop(['athlete_full_name','slug_game','participant_type','participant_title'], axis=1)
+
+#clean solo data
+olympicsMedals_finalSolo = olympicsMedals_final[(olympicsMedals_final['participant_type'] != "GameTeam")]
+olympicsMedals_finalSolo= olympicsMedals_finalSolo.drop(['participant_title','participant_type','slug_game'], axis=1)
+
+#merged_data
+merged_dataTokyo = merged_data[(merged_data['slug_game'] == "tokyo-2020")]
+merged_data_Year = merged_dataTokyo.drop(['athlete_url','slug_game','participant_type','participant_title','discipline_title','event_gender','country_code','event_title','country_3_letter_code','athlete_full_name','athlete_year_birth'], axis=1)
+merged_data_Year['country_name']= merged_data_Year['country_name'].replace('ROC', 'Russia')
+top_7_countries_merged_data = merged_data_Year[merged_data_Year['country_name'].isin(top_7_countries_list)]
+average_age_per_medal_type = top_7_countries_merged_data.groupby(['country_name', 'medal_type'])['age'].mean().reset_index()
+average_age_per_medal_type['age'] = average_age_per_medal_type['age'].round(2)  # Round to two decimal places
+average_age_per_Total_medal = merged_data_Year.drop(['country_name'], axis=1)
+average_age_per_Total_medal = average_age_per_Total_medal.groupby(['medal_type'])['age'].mean().reset_index()
+
+#paris2024 data
+merged_dataParis_Final = merged_dataParis_filtered.drop(['athlete_full_name','slug_game','participant_type','participant_title','discipline_title','event_gender','participant_title'], axis=1).drop_duplicates()
+merged_dataParis_Final_Group = merged_dataParis_Final.groupby('country_name').size().reset_index(name='total_medals')
+merged_dataParis_Final_Group['country_name']= merged_dataParis_Final_Group['country_name'].replace('ROC', 'Russia')
+merged_dataParis_Final_Groupsorted = merged_dataParis_Final_Group.sort_values(by="total_medals", ascending=False)
+top_7_countriesPARIS = merged_dataParis_Final_Groupsorted.head(7)
+
+
+## data analysis: data visualization featuring plotly
+
+fig1 = px.histogram(top_7_countries, x="country_name", y = "total_medals",color="country_name",nbins=25)
+fig1.update_layout(bargap=0.21)
+fig1.update_layout(title_text='Olympic Tokyo 2021 - Total Medals',xaxis_title='Country Name', yaxis_title='Total Medals')
+fig1.show()
+
+fig2 = px.histogram(top_7_countries_each_medal, x="country_name", y="count", color="medal_type", barmode='group', labels={"'value': 'Medal Count', 'variable': 'Medal Type'"}, category_orders={'country_name': top_7_countries_list,'medal_type': ['GOLD', 'SILVER', 'BRONZE']})
+fig2.update_layout(title_text='Olympic Tokyo 2021 - Each Medals',xaxis_title='Country Name', yaxis_title='Total by Medals')
+fig2.show()
+
+fig3 = px.histogram(average_age_per_medal_type, x="country_name", y="age", color="medal_type", barmode='group', labels={"'value': 'Medal Count', 'variable': 'Medal Type'"}, category_orders={'country_name': top_7_countries_list, 'medal_type': ['GOLD', 'SILVER', 'BRONZE']})
+fig3.update_layout(title_text='Olympic Tokyo 2021 - Age mean',xaxis_title='Country Name', yaxis_title='Mean Age')
+fig3.show()
+
+fig4 = px.bar(average_age_per_Total_medal, x="medal_type", y="age", color="medal_type",labels={'age': 'Mean Age', 'medal_type': 'Medal Type'}, category_orders={'medal_type': ['GOLD', 'SILVER', 'BRONZE']})
+fig4.update_layout(title='Olympic Tokyo 2021 - Average Age for Each Medal Type',xaxis_title='Medal Type', yaxis_title='Mean Age')
+fig4.show()
+
+##data to paris 2024
+fig5 = px.histogram(top_7_countriesPARIS, x="country_name", y = "total_medals",color="country_name",nbins=25)
+fig5.update_layout(bargap=0.21)
+fig5.update_layout(title_text='Olympic Paris 2024',xaxis_title='Country Name', yaxis_title='Total Athletes between 24 and 27 years')
+fig5.show()
